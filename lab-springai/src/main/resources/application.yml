@@ -1,0 +1,25 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: lab-springai
+  ai:
+    ollama:
+      base-url: http://localhost:11434
+      init:
+        # 模型已在本机拉取，启动时不做联网检查
+        pull-model-strategy: never
+      chat:
+        # Spring AI 2.0 起配置属性扁平化（旧写法 spring.ai.ollama.chat.options.model 仍兼容）
+        model: qwen3:8b
+        temperature: 0.7
+        num-ctx: 8192
+        # qwen3 默认走思考模式，会先输出大段推理；关闭以得到干净的流式回答
+        think: false
+        # 本机冷加载 27~43s、热加载 4.2s，保持常驻避免反复加载
+        keep-alive: 10m
+
+logging:
+  level:
+    com.aistudy.lab: DEBUG

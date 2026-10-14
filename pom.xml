@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+	<modelVersion>4.0.0</modelVersion>
+
+	<parent>
+		<groupId>org.springframework.boot</groupId>
+		<artifactId>spring-boot-starter-parent</artifactId>
+		<version>4.1.1</version>
+		<relativePath/>
+	</parent>
+
+	<groupId>com.aistudy</groupId>
+	<artifactId>spring-ai-lab</artifactId>
+	<version>0.1.0-SNAPSHOT</version>
+	<packaging>pom</packaging>
+	<name>spring-ai-lab</name>
+	<description>LLM 应用架构师主线项目（v0.1 对话服务起步）</description>
+
+	<properties>
+		<java.version>17</java.version>
+		<!--
+		  Boot 4 的父 pom 只提供 maven.compiler.release，不再提供 maven.compiler.source/target
+		  （Boot 3.x 是两个都提供的）。而 IDEA 的 Maven 导入器只认 source/target，
+		  只给 release 时它会回落到历史默认值 JDK_1_5，导致文本块等 17 语法被误判为编译错误。
+		  这里显式补上 source/target，让命令行与 IDEA 保持一致的口径。
+		-->
+		<maven.compiler.source>${java.version}</maven.compiler.source>
+		<maven.compiler.target>${java.version}</maven.compiler.target>
+		<!-- Spring AI 2.0：构建在 Spring Boot 4 / Framework 7 之上 -->
+		<spring-ai.version>2.0.1</spring-ai.version>
+	</properties>
+
+	<modules>
+		<module>lab-springai</module>
+	</modules>
+
+	<dependencyManagement>
+		<dependencies>
+			<dependency>
+				<groupId>org.springframework.ai</groupId>
+				<artifactId>spring-ai-bom</artifactId>
+				<version>${spring-ai.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+		</dependencies>
+	</dependencyManagement>
+
+</project>

@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Spring AI Lab · v0.1 流式对话</title>
+<style>
+  :root {
+    --bg: #F7F5F0;  --ink: #1C2A3A;  --gold: #C9A227;
+    --card: #FFFFFF; --line: rgba(28,42,58,.12);
+    --muted: rgba(28,42,58,.55); --soft: rgba(28,42,58,.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12181F; --ink: #E8E3D9; --gold: #D9B341;
+      --card: #1A222C; --line: rgba(232,227,217,.14);
+      --muted: rgba(232,227,217,.55); --soft: rgba(232,227,217,.08);
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: system-ui, -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif;
+    display: flex; flex-direction: column;
+  }
+
+  header {
+    display: flex; align-items: center; gap: 10px;
+    padding: 14px 20px; border-bottom: 1px solid var(--line);
+    background: var(--card);
+  }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--gold); }
+  header h1 { font-size: 15px; font-weight: 600; margin: 0; letter-spacing: .02em; }
+  header .sub { font-size: 12px; color: var(--muted); margin-left: 2px; }
+  header .spacer { flex: 1; }
+  header button {
+    font: inherit; font-size: 12px; color: var(--muted);
+    background: transparent; border: 1px solid var(--line);
+    border-radius: 999px; padding: 5px 12px; cursor: pointer;
+  }
+  header button:hover { color: var(--ink); border-color: var(--gold); }
+
+  main { flex: 1; overflow-y: auto; padding: 22px 20px 8px; scroll-behavior: smooth; }
+  .inner { max-width: 760px; margin: 0 auto; }
+
+  .row { display: flex; margin-bottom: 16px; }
+  .row.me { justify-content: flex-end; }
+  .bubble {
+    max-width: 86%; padding: 10px 14px; border-radius: 14px;
+    font-size: 14.5px; line-height: 1.75; white-space: pre-wrap; word-break: break-word;
+  }
+  .row.me .bubble {
+    background: var(--ink); color: var(--bg);
+    border-bottom-right-radius: 4px;
+  }
+  .row.ai .bubble {
+    background: var(--card); border: 1px solid var(--line);
+    border-bottom-left-radius: 4px;
+  }
+  .row.ai .bubble.typing::after {
+    content: ""; display: inline-block; width: 7px; height: 15px;
+    margin-left: 2px; vertical-align: -3px;
+    background: var(--gold); animation: blink 1s steps(2) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+  .hint { color: var(--muted); font-size: 13px; text-align: center; margin-top: 40px; line-height: 2; }
+  .hint code {
+    background: var(--soft); padding: 1px 6px; border-radius: 5px;
+    font-family: ui-monospace, Consolas, monospace; font-size: 12.5px;
+  }
+
+  footer { border-top: 1px solid var(--line); background: var(--card); padding: 12px 20px 14px; }
+  .foot-inner { max-width: 760px; margin: 0 auto; }
+  .composer { display: flex; gap: 10px; align-items: flex-end; }
+  textarea {
+    flex: 1; resize: none; font: inherit; font-size: 14.5px; line-height: 1.6;
+    color: var(--ink); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 12px;
+    padding: 10px 14px; outline: none; max-height: 132px;
+  }
+  textarea:focus { border-color: var(--gold); }
+  textarea::placeholder { color: var(--muted); }
+  .send {
+    font: inherit; font-size: 14px; font-weight: 600;
+    color: var(--bg); background: var(--ink);
+    border: none; border-radius: 12px; padding: 11px 22px; cursor: pointer;
+  }
+  .send:disabled { opacity: .45; cursor: default; }
+  .stat {
+    font-size: 12px; color: var(--muted); margin-top: 8px;
+    font-family: ui-monospace, Consolas, monospace; min-height: 15px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="dot"></span>
+  <h1>Spring AI Lab</h1>
+  <span class="sub">v0.1 · qwen3:8b · 本地 Ollama</span>
+  <span class="spacer"></span>
+  <button id="clear">清空</button>
+</header>
+
+<main id="list">
+  <div class="inner">
+    <div class="hint">
+      流式对话已就绪，问点什么。<br />
+      首次提问会冷加载模型（约 20 秒），之后首字约 <code>0.3~0.8s</code>。
+    </div>
+  </div>
+</main>
+
+<footer>
+  <div class="foot-inner">
+    <div class="composer">
+      <textarea id="input" rows="1" placeholder="说点什么…  Enter 发送 / Shift+Enter 换行"></textarea>
+      <button class="send" id="send">发送</button>
+    </div>
+    <div class="stat" id="stat"></div>
+  </div>
+</footer>
+
+<script>
+(function () {
+  const list    = document.getElementById('list');
+  const input   = document.getElementById('input');
+  const sendBtn = document.getElementById('send');
+  const statEl  = document.getElementById('stat');
+
+  let es = null;           // 当前 EventSource
+  let busy = false;
+
+  // 自动增高输入框
+  input.addEventListener('input', () => {
+    input.style.height = 'auto';
+    input.style.height = Math.min(input.scrollHeight, 132) + 'px';
+  });
+
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  });
+  sendBtn.addEventListener('click', send);
+  document.getElementById('clear').addEventListener('click', () => {
+    if (es) { es.close(); es = null; busy = false; sendBtn.disabled = false; }
+    list.querySelector('.inner').innerHTML =
+      '<div class="hint">已清空。继续提问吧。</div>';
+    statEl.textContent = '';
+  });
+
+  function addBubble(role, text) {
+    const inner = list.querySelector('.inner');
+    const row = document.createElement('div');
+    row.className = 'row ' + role;
+    const b = document.createElement('div');
+    b.className = 'bubble';
+    b.textContent = text;
+    row.appendChild(b);
+    inner.appendChild(row);
+    return b;
+  }
+
+  function toBottom() { list.scrollTop = list.scrollHeight; }
+
+  function send() {
+    const text = input.value.trim();
+    if (!text || busy) return;
+
+    // 首次发言时清掉占位提示
+    const hint = list.querySelector('.hint');
+    if (hint) hint.remove();
+
+    addBubble('me', text);
+    input.value = '';
+    input.style.height = 'auto';
+    toBottom();
+
+    const bubble = addBubble('ai', '');
+    bubble.classList.add('typing');
+
+    busy = true;
+    sendBtn.disabled = true;
+    statEl.textContent = '等待首字…';
+    const slowTimer = setTimeout(() => {
+      statEl.textContent = '模型正在冷加载（首次约 20s）…';
+    }, 3000);
+
+    const t0 = performance.now();
+    let firstMs = null, chars = 0;
+
+    es = new EventSource('/chat/stream?message=' + encodeURIComponent(text));
+
+    es.onmessage = (ev) => {
+      if (firstMs === null) {
+        firstMs = performance.now() - t0;
+        clearTimeout(slowTimer);
+        statEl.textContent = '首字 ' + (firstMs / 1000).toFixed(2) + 's';
+      }
+      chars += ev.data.length;
+      bubble.textContent += ev.data;
+      const sec = (performance.now() - t0) / 1000;
+      statEl.textContent =
+        '首字 ' + (firstMs / 1000).toFixed(2) + 's · ' +
+        chars + ' 字 · ' + sec.toFixed(2) + 's' +
+        (sec > 0 ? '  (' + (chars / sec).toFixed(1) + ' 字/s)' : '');
+      toBottom();
+    };
+
+    // 服务端发来的结束标记（后端 Flux 末尾会补一个 event:done）
+    es.addEventListener('done', () => finish(true));
+    es.addEventListener('error', () => finish(false));
+    // Spring 的 SseEmitter 关闭连接时，EventSource 会触发 onerror 并准备自动重连，
+    // 必须在 finish() 里 close()，否则会无限重复请求。
+  }
+
+  function finish(ok) {
+    if (es) { es.close(); es = null; }
+    busy = false;
+    sendBtn.disabled = false;
+    document.querySelectorAll('.bubble.typing').forEach(b => b.classList.remove('typing'));
+    if (!ok) {
+      statEl.textContent += '  · 连接已结束（或后端未响应）';
+    }
+    input.focus();
+  }
+})();
+</script>
+
+</body>
+</html>
